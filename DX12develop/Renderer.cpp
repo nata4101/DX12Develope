@@ -1,10 +1,11 @@
 #include "main.h"
-#include <dxgi1_4.h>
 #include "Renderer.h"
 
 void Renderer::Init()
 {
 	HRESULT hr;
+
+	UINT dxgiFactoryFlags = 0;
 
 #if defined(_DEBUG)
 	// Enable the debug layer (requires the Graphics Tools "optional feature").
@@ -18,13 +19,14 @@ void Renderer::Init()
 			debugController->EnableDebugLayer();
 
 			// Enable additional debug layers.(追加のデバッグレイヤーを有効にします。)
-			//dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+			dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
 		}
 	}
 #endif
 
 	//ファクトリ-生成・・・低レベルなものにアクセスするためのデバイスみたいなものらしい
 	ComPtr<IDXGIFactory4> factory;
+	hr = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&factory));
 	if (FAILED(hr)) {
 		MessageBox(NULL, L"ファクトリーの作成に失敗しました", L"エラーメッセージ", MB_OK);
 	}
@@ -125,16 +127,74 @@ void Renderer::Init()
 	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	//レンダービューターゲットの作成
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-		m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-}
+	//ヘルパー内の構造体
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+	//各フレームのレンダービューターゲットの作成
+	for (UINT n = 0; n < FrameCount; n++) {
+		hr = m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n]));
+		if (FAILED(hr)) {
+			MessageBox(NULL, L"レンダービューターゲット生成の失敗", L"エラーメッセージ", MB_OK);
+		}
+		m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr,rtvHandle);
+		rtvHandle.Offset(1, m_rtvDescriptorSize);
+	}
 
-void Renderer::Draw()
-{
-}
+	//コマンドアロケータの作成
+	hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
 
-void Renderer::Update()
-{
+	//ルートシグネチャの作成
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+	hr = (D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+	hr = (m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+
+	// シェーダーのコンパイルと読み込みを含むパイプライン状態を作成
+	ComPtr<ID3DBlob> vertexShader;
+	ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+	// Enable better shader debugging with the graphics debugging tools.
+	// グラフィック デバッグ ツールを使用して、より適切なシェーダー デバッグを有効にします。
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	UINT compileFlags = 0;
+#endif
+
+	hr = D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr);
+	hr = D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "PSMain", "vs_5_0", compileFlags, 0, &pixelShader, nullptr);
+
+	// 頂点入力レイアウトを定義します。
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+		 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12,
+		 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0} };
+
+	// グラフィックス パイプライン状態オブジェクト (PSO) を記述して作成
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+	psoDesc.pRootSignature = m_rootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc.Count = 1;
+	hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
+  
+	// コマンドリストを作成します
+	m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(),m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList));
+
+
+
 }
 
 void Renderer::Uninit()

@@ -16,10 +16,6 @@ public:
 
 	void Init();
 
-	void Draw();
-
-	void Update();
-
 	void Uninit();
 
 private:
@@ -37,10 +33,23 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	//レンダーターゲット用デスクリプタのサイズ
 	UINT m_rtvDescriptorSize;
+	//各フレームに対してのレンダービューターゲット
+	ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
+	//コマンドアロケータ
+	ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+	//ルートシグネチャ
+	ComPtr<ID3D12RootSignature> m_rootSignature;
+	//パイプラインステート
+	ComPtr<ID3D12PipelineState> m_pipelineState;
+	//コマンドリスト
+	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
 
 	// 同期オブジェクト。
 	//描画側フレームバッファのインデックス
 	UINT m_frameIndex;
+	HANDLE m_fenceEvent;
+	ComPtr<ID3D12Fence> m_fence;
+	UINT64 m_fenceValue;
 };
 
 
