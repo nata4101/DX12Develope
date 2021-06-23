@@ -197,6 +197,19 @@ void Renderer::Init()
 
 }
 
+void Renderer::CreateSynchronizationObject(void)
+{
+	m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
+	m_fenceValue = 1;
+
+	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (m_fence == nullptr) {
+		HRESULT_FROM_WIN32(GetLastError());
+	}
+
+	
+}
+
 void Renderer::Uninit()
 {
 }

@@ -16,6 +16,8 @@ public:
 
 	void Init();
 
+	void CreateSynchronizationObject(void);
+
 	void Uninit();
 
 private:
