@@ -1,5 +1,6 @@
 #include "main.h"
 #include "Renderer.h"
+#include <vector>
 
 void Renderer::Init()
 {
@@ -25,13 +26,31 @@ void Renderer::Init()
 #endif
 
 	//ファクトリ-生成・・・低レベルなものにアクセスするためのデバイスみたいなものらしい
-	ComPtr<IDXGIFactory4> factory;
-	hr = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&factory));
+	hr = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&m_factry));
 	if (FAILED(hr)) {
 		MessageBox(NULL, L"ファクトリーの作成に失敗しました", L"エラーメッセージ", MB_OK);
 	}
 
-	//ワープアダプタ・・・よくわからん
+	//ワープアダプタ・・・グラボの指定らしい
+	std::vector <IDXGIAdapter*> adapters;
+
+	IDXGIAdapter* tmpAdapter = nullptr;
+
+	for (int i = 0; m_factry->EnumAdapters(i, &tmpAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+		adapters.push_back(tmpAdapter);
+	}
+
+	for (auto adpt : adapters) {
+		DXGI_ADAPTER_DESC adesc = {};
+		adpt->GetDesc(&adesc);
+
+		std::wstring strDesc = adesc.Description;
+
+		if (strDesc.find(L"NVIDIA") != std::string::npos) {
+			tmpAdapter = adpt;
+			break;
+		}
+	}
 	/*if (m_use_warp_device) {
 		ComPtr<IDXGIAdapter> warpAdapter;
 		hr = factory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter));
@@ -53,10 +72,16 @@ void Renderer::Init()
 	}*/
 
 	//デバイス生成
-	hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device));
+	hr = D3D12CreateDevice(tmpAdapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device));
 	if (FAILED(hr)) {
 		MessageBox(NULL, L"Direct3Dインターフェースの作成に失敗しました", L"エラーメッセージ", MB_OK);
 	}
+
+	//コマンドアロケータの作成
+	hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
+
+	// コマンドリストを作成します
+	m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList));
 
 	
 	//コマンドキューの作成
@@ -91,7 +116,7 @@ void Renderer::Init()
 
 	ComPtr<IDXGISwapChain1> swapChain;
 	//CreateSwapChainForHwnd::スワップチェーンの出力ウィンドウへのHWNDハンドルに関連付けられたスワップチェーンを作成します。
-	hr = factory->CreateSwapChainForHwnd(
+	hr = m_factry->CreateSwapChainForHwnd(
 		m_commandQueue.Get(),
 		GetWindow(),
 		&swapChainDesc,
@@ -102,7 +127,7 @@ void Renderer::Init()
 		MessageBox(NULL, L"スワップチェーン生成の失敗", L"エラーメッセージ", MB_OK);
 	}
 	//フルスクリーン防止
-	hr = factory->MakeWindowAssociation(GetWindow(), DXGI_MWA_NO_ALT_ENTER);
+	hr = m_factry->MakeWindowAssociation(GetWindow(), DXGI_MWA_NO_ALT_ENTER);
 	if (FAILED(hr)) {
 		MessageBox(NULL, L"スワップチェーン生成の失敗", L"エラーメッセージ", MB_OK);
 	}
@@ -114,7 +139,7 @@ void Renderer::Init()
 	//描画側フレームバッファのインデックス取得
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-	// 記述子ヒープを作成
+	// ディスクリプタヒープを作成
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
 	//格納できるデスクリプタの数
 	rtvHeapDesc.NumDescriptors = FrameCount;
@@ -139,8 +164,7 @@ void Renderer::Init()
 		rtvHandle.Offset(1, m_rtvDescriptorSize);
 	}
 
-	//コマンドアロケータの作成
-	hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
+	
 
 	//ルートシグネチャの作成
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -190,8 +214,7 @@ void Renderer::Init()
 	psoDesc.SampleDesc.Count = 1;
 	hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
   
-	// コマンドリストを作成します
-	m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(),m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList));
+	
 
 
 

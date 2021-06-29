@@ -23,10 +23,12 @@ public:
 private:
 	//格納できるデスクリプタの数（デスクリプタヒープが配列の為、配列数の指定が必要）。通常レンダーターゲットはフレームバッファと1：1になるように作成する
 	static const UINT FrameCount = 2;
+	//ファクトリ
+	ComPtr<IDXGIFactory6> m_factry;
 	//デバイスポインタ
 	ComPtr<ID3D12Device5> m_device;
 	//スワップチェーン
-	ComPtr<IDXGISwapChain3> m_swapChain;
+	ComPtr<IDXGISwapChain4> m_swapChain;
 	//コマンドキュー
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	//ワープアダプタを使うかどうか
